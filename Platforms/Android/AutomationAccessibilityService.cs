@@ -73,16 +73,7 @@ namespace BigoLiveScrapper.Platforms.Android
             return _isServiceRunning && Instance != null;
         }
 
-        /// <summary>
-        /// Gets the root node of the active window
-        /// </summary>
-        public AccessibilityNodeInfo? GetRootInActiveWindow()
-        {
-            return RootInActiveWindow;
-        }
-
         // Core automation methods used by services
-
         public async Task<AccessibilityNodeInfo?> FindNodeByTextAsync(string text, int timeoutMs = 5000)
         {
             var startTime = System.Environment.TickCount;
@@ -894,6 +885,18 @@ namespace BigoLiveScrapper.Platforms.Android
 
             return result.ElementAtOrDefault(index);
         }
+        public List<AccessibilityNodeInfo>? FindNodesByResourceId(string resourceId)
+        {
+            if (RootInActiveWindow == null)
+                return [];
+
+            var result = new List<AccessibilityNodeInfo>();
+            var nodes = RootInActiveWindow.FindAccessibilityNodeInfosByViewId(resourceId);
+            if (nodes != null)
+                result.AddRange(nodes);
+
+            return result;
+        }
 
         private AccessibilityNodeInfo? FindNodeByClassName(AccessibilityNodeInfo node, string className)
         {
@@ -1064,34 +1067,6 @@ namespace BigoLiveScrapper.Platforms.Android
                 {
                     FindAllTextsByResourceId(child, resourceId, results);
                 }
-            }
-        }
-
-        /// <summary>
-        /// Wait for element by resource ID
-        /// </summary>
-        public AccessibilityNodeInfo? WaitForElementByResourceId(string resourceId, int timeoutMs = 5000)
-        {
-            try
-            {
-                var startTime = System.Environment.TickCount;
-                while (System.Environment.TickCount - startTime < timeoutMs)
-                {
-                    var rootNode = RootInActiveWindow;
-                    if (rootNode != null)
-                    {
-                        var node = FindNodeByResourceId(rootNode, resourceId);
-                        if (node != null)
-                            return node;
-                    }
-                    Thread.Sleep(500);
-                }
-                return null;
-            }
-            catch (System.Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"AutomationAccessibilityService: Error waiting for element by resource ID: {ex.Message}");
-                return null;
             }
         }
 

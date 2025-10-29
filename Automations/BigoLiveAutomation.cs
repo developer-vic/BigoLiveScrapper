@@ -43,12 +43,12 @@ namespace BigoLiveScrapper.Automations
                     return (false, "Failed to launch Bigo Live app", "");
                 }
                 // Navigate to home/feed
-                _accessibilityService.GoBack(10, stopAtHome: true); 
+                _accessibilityService.GoBack(10, stopAtHome: true);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 1: Find and click search button (sg.bigo.live:id/iv_search)
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for search button");
-                var searchButton = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.SEARCH_BUTTON_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                var searchButton = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.SEARCH_BUTTON_ID);
                 if (searchButton == null)
                 {
                     return (false, "Could not find search button", "");
@@ -59,7 +59,7 @@ namespace BigoLiveScrapper.Automations
 
                 // Step 2: Find search input (sg.bigo.live:id/searchInput) - First android.widget.EditText
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for search input");
-                var searchInput = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.SEARCH_INPUT_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                var searchInput = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.SEARCH_INPUT_ID);
                 if (searchInput == null)
                 {
                     // Fallback: try to find first EditText
@@ -80,7 +80,7 @@ namespace BigoLiveScrapper.Automations
 
                 // Step 3: Back(1) to hide keyboard
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Hiding keyboard");
-                _accessibilityService.GoBack(1, stopAtHome: false); 
+                _accessibilityService.GoBack(1, stopAtHome: false);
                 await Task.Delay(200, cancellationToken);
                 _accessibilityService.ClickByResourceId(BigoLiveSConstants.SEARCH_CONFIRM_ID);
                 await Task.Delay(2000, cancellationToken);
@@ -88,7 +88,7 @@ namespace BigoLiveScrapper.Automations
 
                 // Step 4: Click first search result (sg.bigo.live:id/searchOptimizeHotId)
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for search result");
-                var searchResult = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.SEARCH_RESULT_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                var searchResult = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.SEARCH_RESULT_ID);
                 if (searchResult == null)
                 {
                     return (false, "Could not find search result", "");
@@ -99,11 +99,11 @@ namespace BigoLiveScrapper.Automations
 
                 // Step 5: Click contribution entry (sg.bigo.live:id/fl_contrib_entry -> sg.bigo.live:id/tv_contribute)
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for contribution entry");
-                var contribEntry = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.CONTRIB_ENTRY_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                var contribEntry = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.CONTRIB_ENTRY_ID);
                 if (contribEntry == null)
                 {
                     // Try clicking the text directly
-                    var contribText = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.CONTRIB_TEXT_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                    var contribText = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.CONTRIB_TEXT_ID);
                     if (contribText == null)
                     {
                         return (false, "Could not find contribution entry", "");
@@ -119,34 +119,6 @@ namespace BigoLiveScrapper.Automations
 
                 // Step 6: Find all 4 tabs (sg.bigo.live:id/uiTabTitle) - Daily, Weekly, Monthly, Overall
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for tabs");
-                var rootNode = _accessibilityService.GetRootInActiveWindow();
-                List<AccessibilityNodeInfo> tabs = new List<AccessibilityNodeInfo>();
-
-                if (rootNode != null)
-                {
-                    // Try finding by resource ID directly first
-                    var tabNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.TAB_TITLE_ID);
-                    if (tabNodes != null && tabNodes.Count >= 4)
-                    {
-                        tabs = tabNodes.ToList();
-                        System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found {tabs.Count} tabs by resource ID");
-                    }
-                    else
-                    {
-                        // Fallback: try finding by class name and resource ID filter
-                        var allTextViews = _accessibilityService.FindNodesByClassName("android.widget.TextView", rootNode);
-                        tabs = allTextViews
-                            .Where(n => n.ViewIdResourceName?.Contains("uiTabTitle") == true)
-                            .ToList();
-                        System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found {tabs.Count} tabs by class name filter");
-                    }
-                }
-
-                if (tabs.Count < 4)
-                {
-                    return (false, $"Could not find all 4 tabs. Found {tabs.Count} tabs.", "");
-                }
-
                 var scrapedData = new Dictionary<string, List<Dictionary<string, object>>>();
 
                 // Define tab order and max items
@@ -158,7 +130,7 @@ namespace BigoLiveScrapper.Automations
                     new { Name = "Overall", MaxItems = 10 }
                 };
 
-                for (int tabIndex = 0; tabIndex < Math.Min(tabs.Count, 4); tabIndex++)
+                for (int tabIndex = 0; tabIndex < Math.Min(tabConfigs.Length, 4); tabIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var tabConfig = tabConfigs[tabIndex];
@@ -166,11 +138,15 @@ namespace BigoLiveScrapper.Automations
                     System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Scraping {tabConfig.Name} tab");
 
                     // Click the tab
-                    _accessibilityService.ClickNode(tabs[tabIndex]);
+                    var nextTab = _accessibilityService.FindNodeByResourceId(null,
+                        BigoLiveSConstants.TAB_TITLE_ID, tabIndex);
+                    if (nextTab == null) continue;
+
+                    _accessibilityService.ClickNode(nextTab);
                     await Task.Delay(2000, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // Scrape data for this tab
+                    // Scrape data for this tab (pass fresh rootNode context)
                     var tabData = await ScrapeTabData(tabConfig.MaxItems, cancellationToken);
                     scrapedData[tabConfig.Name] = tabData;
 
@@ -211,76 +187,56 @@ namespace BigoLiveScrapper.Automations
         {
             var results = new List<Dictionary<string, object>>();
 
-            await Task.Delay(1000, cancellationToken); // Wait for tab content to load
+            // Wait for tab content to load and get fresh rootNode
+            await Task.Delay(1500, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            // Find all contribution rows
-            var rootNode = _accessibilityService.GetRootInActiveWindow();
-            if (rootNode == null)
+            var userNameNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.USER_NAME_ID);
+            var contributionNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.CONTRIBUTION_AMOUNT_ID);
+            var levelNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.USER_LEVEL_ID);
+            if (userNameNodes == null || userNameNodes.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: No user names found in tab");
                 return results;
+            }
 
-            // Get all user names
-            var userNameNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.USER_NAME_ID);
-            var contributionNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.CONTRIBUTION_AMOUNT_ID);
-            var levelNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.USER_LEVEL_ID);
-
-            int itemCount = Math.Min(maxItems, userNameNodes?.Count ?? 0);
+            int itemCount = Math.Min(maxItems, userNameNodes.Count);
+            System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found {userNameNodes.Count} users, scraping {itemCount} items");
 
             for (int i = 0; i < itemCount; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                // Re-fetch nodes at the start of each iteration to ensure fresh references
-                rootNode = _accessibilityService.GetRootInActiveWindow();
-                if (rootNode == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Root node is null at iteration {i + 1}");
-                    continue;
-                }
-
-                userNameNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.USER_NAME_ID);
-                contributionNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.CONTRIBUTION_AMOUNT_ID);
-                levelNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.USER_LEVEL_ID);
-
-                if (userNameNodes == null || i >= userNameNodes.Count)
-                {
-                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: No username node found at index {i}");
-                    continue;
-                }
-
                 var userData = new Dictionary<string, object>();
 
                 // Get contribution and level data BEFORE clicking (to avoid re-fetching)
                 string amount = "";
                 string userLevel = "";
-                
+
                 if (contributionNodes != null && i < contributionNodes.Count)
                 {
                     amount = contributionNodes[i].Text?.ToString() ?? "";
                 }
-                
                 if (levelNodes != null && i < levelNodes.Count)
                 {
                     userLevel = levelNodes[i].Text?.ToString() ?? "";
                 }
 
-                // Get username (display name) from tv_name
-                string username = "";
-                string actualUserId = "";
-                
+                // Get username (display name) from tv_name 
                 var userNameNode = userNameNodes[i];
                 var rawUsername = userNameNode.Text?.ToString() ?? "";
-                
+
                 // Fix emoji handling - decode unicode escape sequences to actual emojis
-                username = DecodeUnicodeEmojis(rawUsername);
-                
+                string username = DecodeUnicodeEmojis(rawUsername);
+
                 // Click on the username to go to profile page
                 System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Clicking username {i + 1}: {username}");
                 _accessibilityService.ClickNode(userNameNode);
                 await Task.Delay(1000, cancellationToken); // Wait for profile page to load
                 cancellationToken.ThrowIfCancellationRequested();
-                
+
                 // Find the actual user_id from tv_bigo_id
-                var bigoIdNode = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.BIGO_ID_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                string actualUserId = "";
+                var bigoIdNode = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.BIGO_ID_ID);
                 if (bigoIdNode != null)
                 {
                     var rawUserId = bigoIdNode.Text?.ToString() ?? "";
@@ -292,9 +248,10 @@ namespace BigoLiveScrapper.Automations
                 {
                     System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Could not find tv_bigo_id element");
                 }
-                
+
                 // Go back to the list
                 _accessibilityService.GoBack(1, stopAtHome: false);
+                await Task.Delay(200, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Store all data
@@ -338,7 +295,7 @@ namespace BigoLiveScrapper.Automations
                 // Create HttpClient
                 using var httpClient = new HttpClient();
                 httpClient.Timeout = TimeSpan.FromSeconds(10);
-                
+
                 // Fetch HTML
                 var response = await httpClient.GetAsync(profileUrl, cancellationToken);
                 if (!response.IsSuccessStatusCode)
@@ -348,32 +305,32 @@ namespace BigoLiveScrapper.Automations
                 }
 
                 var htmlContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                
+
                 // Find div with class="img-preview"
                 // Pattern: <div class="img-preview"...>...<img src="..."...
                 var divPattern = @"<div[^>]*class\s*=\s*[""']img-preview[""'][^>]*>(.*?)</div>";
                 var divMatch = Regex.Match(htmlContent, divPattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-                
+
                 if (divMatch.Success)
                 {
                     var divContent = divMatch.Groups[1].Value;
-                    
+
                     // Find first img tag src in the div
                     var imgPattern = @"<img[^>]*src\s*=\s*[""']([^""']+)[""']";
                     var imgMatch = Regex.Match(divContent, imgPattern, RegexOptions.IgnoreCase);
-                    
+
                     if (imgMatch.Success)
                     {
                         var imgSrc = imgMatch.Groups[1].Value;
-                        
+
                         // Split by ? and take [0] to remove query parameters
                         var profilePictureUrl = imgSrc.Split('?')[0].Trim();
-                        
+
                         System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found profile picture URL: {profilePictureUrl}");
                         return profilePictureUrl;
                     }
                 }
-                
+
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Could not find img-preview div or img tag");
                 return null;
             }
@@ -423,7 +380,7 @@ namespace BigoLiveScrapper.Automations
                 {
                     var highHex = match.Groups[1].Value;
                     var lowHex = match.Groups[2].Value;
-                    
+
                     if (int.TryParse(highHex, System.Globalization.NumberStyles.HexNumber, null, out int highSurrogate) &&
                         int.TryParse(lowHex, System.Globalization.NumberStyles.HexNumber, null, out int lowSurrogate))
                     {
