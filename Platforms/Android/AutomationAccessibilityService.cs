@@ -73,6 +73,14 @@ namespace BigoLiveScrapper.Platforms.Android
             return _isServiceRunning && Instance != null;
         }
 
+        /// <summary>
+        /// Gets the root node of the active window
+        /// </summary>
+        public AccessibilityNodeInfo? GetRootInActiveWindow()
+        {
+            return RootInActiveWindow;
+        }
+
         // Core automation methods used by services
 
         public async Task<AccessibilityNodeInfo?> FindNodeByTextAsync(string text, int timeoutMs = 5000)
@@ -522,7 +530,7 @@ namespace BigoLiveScrapper.Platforms.Android
                     Thread.Sleep(1000);
                     if (RootInActiveWindow != null)
                     {
-                        var tabFeed = FindNodeByText(RootInActiveWindow, BigoLiveSConstants.SEARCH_BUTTON_ID);
+                        var tabFeed = FindNodeByResourceId(RootInActiveWindow, BigoLiveSConstants.SEARCH_BUTTON_ID);
                         if (tabFeed != null)
                         {
                             if (stopAtHome) break; //for starting operation

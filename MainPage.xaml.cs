@@ -6,16 +6,10 @@ namespace BigoLiveScrapper;
 
 public partial class MainPage : ContentPage
 { 
-	private string? _currentImagePath;
-	private string? _currentVideoPath;
-	private bool _isVideo = false;
-	private string _generatedCaption = string.Empty;
-	private string _generatedMediaUrl = string.Empty;
-
 	private readonly IAutomationService _accessibilityService;
-	private bool _isAutomationRunning = false;
+	private bool _isScrapingRunning = false;
 	private AutomationService? _automationService;
-	private CancellationTokenSource? _automationCancellationTokenSource;
+	private CancellationTokenSource? _scrapingCancellationTokenSource;
 
 	public MainPage(IAutomationService accessibilityService)
 	{
@@ -35,9 +29,6 @@ public partial class MainPage : ContentPage
 			_automationService = new AutomationService();
 			_automationService.Initialize();
 
-			// Set the binding context for the CollectionView
-			StatusCollectionView.BindingContext = _automationService;
-
 			System.Diagnostics.Debug.WriteLine("AutomationService initialized successfully");
 		}
 		catch (Exception ex)
@@ -48,15 +39,8 @@ public partial class MainPage : ContentPage
 
 	private void GetAppVersionNumber()
 	{
-		AppTitleLabel.Text = $"Restaurant Post Generator v{AppInfo.VersionString}";
+		AppTitleLabel.Text = $"Bigo Live Scrapper v{AppInfo.VersionString}";
 		UpdateStatus();
-
-		//crash the app if not october 2025 //TODO remove before release
-		DateTime today = DateTime.Now;
-		if (today.Month != 10 || today.Year != 2025)
-		{
-			throw new Exception("Invalid Authentication");
-		}
 	}
 
 	private async void OnEnableAccessibilityClicked(object? sender, EventArgs e)
@@ -71,7 +55,7 @@ public partial class MainPage : ContentPage
 				// Service is enabled, ask user to disable it
 				var result = await DisplayAlert(
 					"Disable Accessibility Service",
-					"This will open the Accessibility Settings. Please find 'Restaurant Post Generator' and toggle it OFF.",
+					"This will open the Accessibility Settings. Please find 'Bigo Live Scrapper' and toggle it OFF.",
 					"Open Settings",
 					"Cancel"
 				);
@@ -134,6 +118,7 @@ public partial class MainPage : ContentPage
 			System.Diagnostics.Debug.WriteLine($"Page: Error in OnEnableAccessibilityClicked: {ex.Message}");
 		}
 	}
+
 	private void UpdateStatus()
 	{
 		var isEnabled = _accessibilityService.IsAccessibilityServiceEnabled;
@@ -146,31 +131,33 @@ public partial class MainPage : ContentPage
 		{
 			EnableAccessibilityBtn.Text = "Disable";
 			EnableAccessibilityBtn.BackgroundColor = Color.FromArgb("#E74C3C"); // Red color
+			StartScrapingBtn.IsEnabled = true;
 		}
 		else
 		{
 			EnableAccessibilityBtn.Text = "Enable";
 			EnableAccessibilityBtn.BackgroundColor = Color.FromArgb("#D4B25A"); // Gold color
+			StartScrapingBtn.IsEnabled = false;
 		}
 
-		// Always try to update automation status, not just when service is running
+		// Initialize automation service when enabled
 		if (isEnabled)
 		{
-			ToggleAutomationBtn.Text = _isAutomationRunning ? "🛑 Stop Automation" : "🤖 Start Automation";
 			InitializeAutomationService();
 		}
 	}
 
-	private async void OnCopyCaptionClicked(object? sender, EventArgs e)
+	private async void OnCopyJsonClicked(object? sender, EventArgs e)
 	{
-		if (!string.IsNullOrEmpty(_generatedCaption))
+		var jsonText = JsonResponseEditor.Text;
+		if (!string.IsNullOrEmpty(jsonText))
 		{
-			await Clipboard.Default.SetTextAsync(_generatedCaption);
-			await DisplayAlert("Copied", "Caption copied to clipboard!", "OK");
+			await Clipboard.Default.SetTextAsync(jsonText);
+			await DisplayAlert("Copied", "JSON data copied to clipboard!", "OK");
 		}
 	}
 
-	private async void OnToggleAutomationClicked(object? sender, EventArgs e)
+	private async void OnStartScrapingClicked(object? sender, EventArgs e)
 	{
 		var service = AutomationAccessibilityService.Instance;
 		if (service?.IsServiceRunning() != true)
@@ -187,182 +174,130 @@ public partial class MainPage : ContentPage
 			return;
 		}
 
-		// Check if caption is generated
-		if (string.IsNullOrEmpty(_generatedCaption) && string.IsNullOrEmpty(CaptionLabel.Text))
+		// Get user ID from input
+		var userId = UserIdEntry.Text?.Trim();
+		if (string.IsNullOrEmpty(userId))
 		{
-			await DisplayAlert("Warning", "Please generate a caption first before starting automation.", "OK");
+			await DisplayAlert("Error", "Please enter a user ID to scrape.", "OK");
 			return;
 		}
 
 		try
 		{
-			if (_isAutomationRunning)
+			if (_isScrapingRunning)
 			{
-				// Stop automation - request cancellation
-				ToggleAutomationBtn.Text = "⏹️ Stopping...";
-				ToggleAutomationBtn.IsEnabled = false;
+				// Stop scraping - request cancellation
+				StartScrapingBtn.Text = "⏹️ Stopping...";
+				StartScrapingBtn.IsEnabled = false;
 
-				// Cancel the automation
-				_automationCancellationTokenSource?.Cancel();
+				// Cancel the scraping
+				_scrapingCancellationTokenSource?.Cancel();
 
-				return; // Let the automation task handle cleanup
+				return;
 			}
 			else
 			{
-				// Start automation on a new thread
-				_isAutomationRunning = true;
+				// Start scraping on a new thread
+				_isScrapingRunning = true;
 
 				// Change button text immediately to show it can be stopped
-				ToggleAutomationBtn.Text = "🛑 Stop Automation";
+				StartScrapingBtn.Text = "🛑 Stop";
+				StartScrapingBtn.IsEnabled = true;
 
-				// Toggle UI visibility - show automation status, hide main content
-				MainContentContainer.IsVisible = false;
-				CaptionFrame.IsVisible = false;
-				AutomationStatusContainer.IsVisible = true;
+				// Clear previous JSON result
+				JsonResponseEditor.Text = "";
 
-				// Get current caption (in case it was manually edited)
-				_generatedCaption = CaptionLabel.Text;
-
-				// Reset statuses
-				_automationService.ResetStatuses();
-
-				// Determine media path based on what's selected
-				string? mediaPath = null;
-				if (_isVideo && !string.IsNullOrEmpty(_currentVideoPath))
-				{
-					mediaPath = _currentVideoPath;
-				}
-				else if (!string.IsNullOrEmpty(_currentImagePath))
-				{
-					mediaPath = _currentImagePath;
-				}
+				// Show loading indicator
+				LoadingIndicator.IsVisible = true;
+				LoadingIndicator.IsRunning = true;
 
 				// Create new cancellation token source
-				_automationCancellationTokenSource = new CancellationTokenSource();
-				var cancellationToken = _automationCancellationTokenSource.Token;
+				_scrapingCancellationTokenSource = new CancellationTokenSource();
+				var cancellationToken = _scrapingCancellationTokenSource.Token;
 
-				// Run all automations on a separate thread
+				// Run scraping on a separate thread
 				_ = Task.Run(async () =>
 				{
 					try
-					{
-						await _automationService.RunAllAutomationsAsync(_generatedCaption, mediaPath, _isVideo, cancellationToken);
-
-						// Check if cancelled
-						if (cancellationToken.IsCancellationRequested)
 						{
-							System.Diagnostics.Debug.WriteLine("Automation was cancelled");
+							var result = await _automationService.RunScrapingAsync(userId, cancellationToken);
+
+							// Check if cancelled
+							if (cancellationToken.IsCancellationRequested)
+							{
+								System.Diagnostics.Debug.WriteLine("Scraping was cancelled");
+
+								MainThread.BeginInvokeOnMainThread(async () =>
+								{
+									await RestoreUIAfterScraping(false);
+									await DisplayAlert("Scraping Stopped", "The scraping process was stopped by user.", "OK");
+								});
+							}
+							else
+							{
+								// Scraping completed successfully
+								MainThread.BeginInvokeOnMainThread(async () =>
+								{
+									await RestoreUIAfterScraping(true);
+									
+									if (result.success)
+									{
+										JsonResponseEditor.Text = result.jsonData;
+										await DisplayAlert("Success", "Scraping completed successfully!", "OK");
+									}
+									else
+									{
+										await DisplayAlert("Error", $"Scraping failed: {result.message}", "OK");
+									}
+								});
+							}
+						}
+						catch (OperationCanceledException)
+						{
+							System.Diagnostics.Debug.WriteLine("Scraping was cancelled via exception");
 
 							MainThread.BeginInvokeOnMainThread(async () =>
 							{
-								await RestoreUIAfterAutomation(false);
-								await DisplayAlert("Automation Stopped", "The automation process was stopped by user.", "OK");
+								await RestoreUIAfterScraping(false);
+								await DisplayAlert("Scraping Stopped", "The scraping process was stopped.", "OK");
 							});
 						}
-						else
+						catch (Exception ex)
 						{
-							// Automation completed successfully
+							System.Diagnostics.Debug.WriteLine($"Error in scraping: {ex.Message}");
+
 							MainThread.BeginInvokeOnMainThread(async () =>
 							{
-								await RestoreUIAfterAutomation(true);
-								await DisplayAlert("Automation Complete", "All social media posting automations have been executed. Check the results!", "OK");
+								await RestoreUIAfterScraping(false);
+								await DisplayAlert("Error", $"Failed to run scraping: {ex.Message}", "OK");
 							});
 						}
-					}
-					catch (OperationCanceledException)
-					{
-						System.Diagnostics.Debug.WriteLine("Automation was cancelled via exception");
-
-						MainThread.BeginInvokeOnMainThread(async () =>
-						{
-							await RestoreUIAfterAutomation(false);
-							await DisplayAlert("Automation Stopped", "The automation process was stopped.", "OK");
-						});
-					}
-					catch (Exception ex)
-					{
-						System.Diagnostics.Debug.WriteLine($"Error in automation: {ex.Message}");
-
-						MainThread.BeginInvokeOnMainThread(async () =>
-						{
-							await RestoreUIAfterAutomation(false);
-							await DisplayAlert("Error", $"Failed to run automation: {ex.Message}", "OK");
-						});
-					}
 				}, cancellationToken);
 			}
 		}
 		catch (Exception ex)
 		{
-			System.Diagnostics.Debug.WriteLine($"Error in automation setup: {ex.Message}");
-			await RestoreUIAfterAutomation(false);
-			await DisplayAlert("Error", $"Failed to start automation: {ex.Message}", "OK");
-		}
-	}
-	private async void OnWebsiteTapped(object? sender, EventArgs e)
-	{
-		Label? label = sender as Label;
-		if (label == null)
-			return;
-
-		string url = label.Text;
-		if (!url.StartsWith("http"))
-		{
-			url = "https://" + url;
-		}
-		await Browser.OpenAsync(url);
-	}
-
-	private void OnViewStatusClicked(object? sender, EventArgs e)
-	{
-		// Toggle visibility of automation status
-		if (AutomationStatusContainer.IsVisible)
-		{
-			// Hide status, show main content
-			AutomationStatusContainer.IsVisible = false;
-			MainContentContainer.IsVisible = true;
-			if (!string.IsNullOrEmpty(_generatedCaption))
-			{
-				CaptionFrame.IsVisible = true;
-			}
-			ViewStatusBtn.Text = "📊 View Last Automation Status";
-		}
-		else
-		{
-			// Show status, hide main content
-			AutomationStatusContainer.IsVisible = true;
-			MainContentContainer.IsVisible = false;
-			CaptionFrame.IsVisible = false;
-			ViewStatusBtn.Text = "◀️ Back to Main";
+			System.Diagnostics.Debug.WriteLine($"Error in scraping setup: {ex.Message}");
+			await RestoreUIAfterScraping(false);
+			await DisplayAlert("Error", $"Failed to start scraping: {ex.Message}", "OK");
 		}
 	}
 
-	private async Task RestoreUIAfterAutomation(bool showViewStatusButton)
+	private async Task RestoreUIAfterScraping(bool showResult)
 	{
-		// Restore UI visibility
-		MainContentContainer.IsVisible = true;
-		if (!string.IsNullOrEmpty(_generatedCaption))
-		{
-			CaptionFrame.IsVisible = true;
-		}
-		AutomationStatusContainer.IsVisible = false;
-
-		// Show the "View Status" button if automation completed successfully
-		if (showViewStatusButton)
-		{
-			ViewStatusBtn.IsVisible = true;
-		}
+		// Hide loading indicator
+		LoadingIndicator.IsVisible = false;
+		LoadingIndicator.IsRunning = false;
 
 		// Reset button state
-		ToggleAutomationBtn.Text = "🤖 Start Automation";
-		ToggleAutomationBtn.IsEnabled = true;
-		_isAutomationRunning = false;
+		StartScrapingBtn.Text = "START";
+		StartScrapingBtn.IsEnabled = true;
+		_isScrapingRunning = false;
 
 		// Clean up cancellation token
-		_automationCancellationTokenSource?.Dispose();
-		_automationCancellationTokenSource = null;
+		_scrapingCancellationTokenSource?.Dispose();
+		_scrapingCancellationTokenSource = null;
 
 		await Task.CompletedTask;
 	}
-
 }

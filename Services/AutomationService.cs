@@ -1,28 +1,20 @@
-using System.Collections.ObjectModel; 
 using BigoLiveScrapper.Automations;
 using BigoLiveScrapper.Platforms.Android;
 
 namespace BigoLiveScrapper.Services
 {
     /// <summary>
-    /// Centralized service to manage all social media posting automations
+    /// Centralized service to manage Bigo Live scraping automation
     /// </summary>
     public class AutomationService
     {
         private readonly AutomationAccessibilityService _accessibilityService;
         private BigoLiveAutomation? _bigoLiveAutomation;
 
-        public ObservableCollection<AutomationStatusItem> StatusItems { get; private set; }
-
         public AutomationService()
         {
             _accessibilityService = AutomationAccessibilityService.Instance 
                 ?? throw new InvalidOperationException("Accessibility service is not running");
-            
-            StatusItems = new ObservableCollection<AutomationStatusItem>
-            {
-                new AutomationStatusItem { Platform = "BigoLive", Status = "Pending", Icon = "📘" }
-            };
         }
 
         /// <summary>
@@ -34,182 +26,52 @@ namespace BigoLiveScrapper.Services
         }
 
         /// <summary>
-        /// Run all automations sequentially with cancellation support
+        /// Run scraping automation with cancellation support
         /// </summary>
-        public async Task RunAllAutomationsAsync(string caption, string? mediaPath = null, bool isVideo = false, CancellationToken cancellationToken = default)
+        public async Task<(bool success, string message, string jsonData)> RunScrapingAsync(string userId, CancellationToken cancellationToken = default)
         {
-            System.Diagnostics.Debug.WriteLine("AutomationService: Starting all automations");
+            System.Diagnostics.Debug.WriteLine("AutomationService: Starting scraping automation");
 
-            // Run BigoLive automation
-            if (!cancellationToken.IsCancellationRequested)
+            if (_bigoLiveAutomation == null)
             {
-                await RunAutomationAsync(
-                    "BigoLive",
-                    async () => await (_bigoLiveAutomation?.PostAsync(caption, mediaPath, isVideo, cancellationToken) 
-                        ?? Task.FromResult((false, "BigoLive automation not initialized"))),
-                    cancellationToken
-                );
+                Initialize();
+            }
 
-                if (!cancellationToken.IsCancellationRequested)
-                {
-                    await Task.Delay(2000, cancellationToken);
-                }
-            }
- 
-            if (cancellationToken.IsCancellationRequested)
+            if (_bigoLiveAutomation == null)
             {
-                System.Diagnostics.Debug.WriteLine("AutomationService: Automations cancelled by user");
-                
-                // Mark remaining pending items as cancelled
-                foreach (var item in StatusItems.Where(i => i.Status == "Pending" || i.Status == "Running..."))
-                {
-                    item.Status = "Cancelled";
-                    item.StatusColor = "Gray";
-                    item.Message = "Stopped by user";
-                }
+                return (false, "BigoLive automation not initialized", "");
             }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("AutomationService: All automations completed");
-            }
-        }
-
-        /// <summary>
-        /// Run a single platform automation with cancellation support
-        /// </summary>
-        private async Task RunAutomationAsync(string platformName, Func<Task<(bool success, string message)>> automationFunc, CancellationToken cancellationToken = default)
-        {
-            var statusItem = StatusItems.FirstOrDefault(s => s.Platform == platformName);
-            if (statusItem == null) return;
 
             try
             {
                 // Check if cancelled before starting
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    statusItem.Status = "Cancelled";
-                    statusItem.StatusColor = "Gray";
-                    statusItem.Message = "Stopped by user";
-                    return;
+                    return (false, "Scraping cancelled by user", "");
                 }
 
-                // Set status to Running when actually starting this platform
-                statusItem.Status = "Running...";
-                statusItem.StatusColor = "Orange";
-                statusItem.Message = string.Empty;
-
-                System.Diagnostics.Debug.WriteLine($"AutomationService: Running {platformName} automation");
+                System.Diagnostics.Debug.WriteLine($"AutomationService: Running scraping for user ID: {userId}");
                 
-                var result = await automationFunc();
+                var result = await _bigoLiveAutomation.ScrapeAsync(userId, cancellationToken);
                 
                 // Check if cancelled after completion
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    statusItem.Status = "Cancelled";
-                    statusItem.StatusColor = "Gray";
-                    statusItem.Message = "Stopped by user";
-                    return;
+                    return (false, "Scraping cancelled by user", "");
                 }
                 
-                if (result.success)
-                {
-                    statusItem.Status = "Success ✓";
-                    statusItem.StatusColor = "Green";
-                    statusItem.Message = result.message;
-                }
-                else
-                {
-                    statusItem.Status = "Failed ✗";
-                    statusItem.StatusColor = "Red";
-                    statusItem.Message = result.message;
-                }
+                return result;
             }
             catch (OperationCanceledException)
             {
-                System.Diagnostics.Debug.WriteLine($"AutomationService: {platformName} cancelled");
-                statusItem.Status = "Cancelled";
-                statusItem.StatusColor = "Gray";
-                statusItem.Message = "Stopped by user";
+                System.Diagnostics.Debug.WriteLine("AutomationService: Scraping cancelled");
+                return (false, "Scraping cancelled by user", "");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"AutomationService: Error in {platformName} - {ex.Message}");
-                statusItem.Status = "Error ✗";
-                statusItem.StatusColor = "Red";
-                statusItem.Message = $"Exception: {ex.Message}";
+                System.Diagnostics.Debug.WriteLine($"AutomationService: Error in scraping - {ex.Message}");
+                return (false, $"Exception: {ex.Message}", "");
             }
-        }
-
-        /// <summary>
-        /// Reset all status items
-        /// </summary>
-        public void ResetStatuses()
-        {
-            foreach (var item in StatusItems)
-            {
-                item.Status = "Pending";
-                item.StatusColor = "Gray";
-                item.Message = string.Empty;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Represents the status of an automation for a specific platform
-    /// </summary>
-    public class AutomationStatusItem : System.ComponentModel.INotifyPropertyChanged
-    {
-        private string _status = "Pending";
-        private string _statusColor = "Gray";
-        private string _message = string.Empty;
-
-        public string Platform { get; set; } = string.Empty;
-        public string Icon { get; set; } = string.Empty;
-        
-        public string Status
-        {
-            get => _status;
-            set
-            {
-                if (_status != value)
-                {
-                    _status = value;
-                    OnPropertyChanged(nameof(Status));
-                }
-            }
-        }
-
-        public string StatusColor
-        {
-            get => _statusColor;
-            set
-            {
-                if (_statusColor != value)
-                {
-                    _statusColor = value;
-                    OnPropertyChanged(nameof(StatusColor));
-                }
-            }
-        }
-
-        public string Message
-        {
-            get => _message;
-            set
-            {
-                if (_message != value)
-                {
-                    _message = value;
-                    OnPropertyChanged(nameof(Message));
-                }
-            }
-        }
-
-        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-
-        protected virtual void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
         }
     }
 }

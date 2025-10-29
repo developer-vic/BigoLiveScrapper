@@ -43,7 +43,7 @@ namespace BigoLiveScrapper.Platforms.Android
                     // Try multiple possible service name formats
                     var possibleServiceNames = new[]
                     {
-                        VConstants.BIGO_LIVE_SCRAPPER_PACKAGE + "/crc644d99863437af88a0.AutomationAccessibilityService"
+                        VConstants.BIGO_LIVE_SCRAPPER_PACKAGE + "/crc641154dc6b6e1fbd62.AutomationAccessibilityService"
                     };
 
                     foreach (var serviceName in possibleServiceNames)
