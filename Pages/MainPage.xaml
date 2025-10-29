@@ -7,13 +7,22 @@
         <VerticalStackLayout
             Margin="0,0,0,10"
             Padding="20,5"
-            Spacing="20">
+            Spacing="10">
 
             <!-- Header -->
             <Label x:Name="AppTitleLabel"
                    Text="Bigo Live Scrapper"
                    Style="{StaticResource Headline}"
                    HorizontalOptions="Center"/>
+            <Label Text="programmergwin.com"
+                   TextColor="Blue"
+                   Margin="0,0,0,10"
+                   TextDecorations="Underline"
+                   HorizontalOptions="End">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnWebsiteTapped"/>
+                </Label.GestureRecognizers>
+            </Label>
 
             <!-- Accessibility Status -->
             <Border
@@ -41,7 +50,7 @@
                        FontAttributes="Bold"
                        FontSize="16"
                        TextColor="{StaticResource Primary}"/>
-                <Entry x:Name="UserIdEntry" 
+                <Entry x:Name="UserIdEntry"
                        Placeholder="Enter Bigo Live user ID"
                        FontSize="16"
                        HeightRequest="50"/>

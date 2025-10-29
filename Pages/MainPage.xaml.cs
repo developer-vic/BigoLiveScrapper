@@ -322,4 +322,19 @@ public partial class MainPage : ContentPage
 
 		await Task.CompletedTask;
 	}
+	
+	private async void OnWebsiteTapped(object? sender, EventArgs e)
+	{
+		Label? label = sender as Label;
+		if (label == null)
+			return;
+
+		string url = label.Text;
+		if (!url.StartsWith("http"))
+		{
+			url = "https://" + url;
+		}
+		await Browser.OpenAsync(url);
+	}
+
 }
