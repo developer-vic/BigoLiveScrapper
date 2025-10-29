@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Text.Json;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Net.Http;
 using BigoLiveScrapper.Data;
 using BigoLiveScrapper.Platforms.Android;
 using Android.Views.Accessibility;
@@ -39,13 +42,8 @@ namespace BigoLiveScrapper.Automations
                 {
                     return (false, "Failed to launch Bigo Live app", "");
                 }
-
-                await Task.Delay(3000, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-
                 // Navigate to home/feed
-                _accessibilityService.GoBack(10, stopAtHome: true);
-                await Task.Delay(2000, cancellationToken);
+                _accessibilityService.GoBack(10, stopAtHome: true); 
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 1: Find and click search button (sg.bigo.live:id/iv_search)
@@ -56,7 +54,7 @@ namespace BigoLiveScrapper.Automations
                     return (false, "Could not find search button", "");
                 }
                 _accessibilityService.ClickNode(searchButton);
-                await Task.Delay(2000, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 2: Find search input (sg.bigo.live:id/searchInput) - First android.widget.EditText
@@ -75,17 +73,17 @@ namespace BigoLiveScrapper.Automations
 
                 // Click and enter username
                 _accessibilityService.ClickNode(searchInput);
-                await Task.Delay(500, cancellationToken);
+                await Task.Delay(200, cancellationToken);
                 _accessibilityService.InputText(userId, 0);
-                await Task.Delay(2000, cancellationToken);
+                await Task.Delay(200, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 3: Back(1) to hide keyboard
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Hiding keyboard");
-                _accessibilityService.GoBack(1, stopAtHome: false);
-                await Task.Delay(500, cancellationToken);
+                _accessibilityService.GoBack(1, stopAtHome: false); 
+                await Task.Delay(200, cancellationToken);
                 _accessibilityService.ClickByResourceId(BigoLiveSConstants.SEARCH_CONFIRM_ID);
-                await Task.Delay(1500, cancellationToken);
+                await Task.Delay(2000, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 4: Click first search result (sg.bigo.live:id/searchOptimizeHotId)
@@ -96,7 +94,7 @@ namespace BigoLiveScrapper.Automations
                     return (false, "Could not find search result", "");
                 }
                 _accessibilityService.ClickNode(searchResult);
-                await Task.Delay(3000, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 5: Click contribution entry (sg.bigo.live:id/fl_contrib_entry -> sg.bigo.live:id/tv_contribute)
@@ -231,34 +229,89 @@ namespace BigoLiveScrapper.Automations
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                // Re-fetch nodes at the start of each iteration to ensure fresh references
+                rootNode = _accessibilityService.GetRootInActiveWindow();
+                if (rootNode == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Root node is null at iteration {i + 1}");
+                    continue;
+                }
+
+                userNameNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.USER_NAME_ID);
+                contributionNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.CONTRIBUTION_AMOUNT_ID);
+                levelNodes = rootNode.FindAccessibilityNodeInfosByViewId(BigoLiveSConstants.USER_LEVEL_ID);
+
+                if (userNameNodes == null || i >= userNameNodes.Count)
+                {
+                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: No username node found at index {i}");
+                    continue;
+                }
+
                 var userData = new Dictionary<string, object>();
 
-                // Get user_id (tv_name)
-                if (userNameNodes != null && i < userNameNodes.Count)
-                {
-                    var userNameNode = userNameNodes[i];
-                    userData["user_id"] = userNameNode.Text?.ToString() ?? "";
-
-                    // Try to get profile picture URL from the node's parent structure
-                    // This is a simplified approach - you may need to adjust based on actual UI structure
-                    userData["profile_picture_url"] = ExtractProfilePictureUrl(userNameNode.Text?.ToString() ?? "") ?? "";
-                }
-
-                // Get amount (tv_contribution)
+                // Get contribution and level data BEFORE clicking (to avoid re-fetching)
+                string amount = "";
+                string userLevel = "";
+                
                 if (contributionNodes != null && i < contributionNodes.Count)
                 {
-                    var contributionNode = contributionNodes[i];
-                    userData["amount"] = contributionNode.Text?.ToString() ?? "";
+                    amount = contributionNodes[i].Text?.ToString() ?? "";
                 }
-
-                // Get rank_position (index + 1)
-                userData["rank_position"] = i + 1;
-
-                // Get user_level (tv_user_level)
+                
                 if (levelNodes != null && i < levelNodes.Count)
                 {
-                    var levelNode = levelNodes[i];
-                    userData["user_level"] = levelNode.Text?.ToString() ?? "";
+                    userLevel = levelNodes[i].Text?.ToString() ?? "";
+                }
+
+                // Get username (display name) from tv_name
+                string username = "";
+                string actualUserId = "";
+                
+                var userNameNode = userNameNodes[i];
+                var rawUsername = userNameNode.Text?.ToString() ?? "";
+                
+                // Fix emoji handling - decode unicode escape sequences to actual emojis
+                username = DecodeUnicodeEmojis(rawUsername);
+                
+                // Click on the username to go to profile page
+                System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Clicking username {i + 1}: {username}");
+                _accessibilityService.ClickNode(userNameNode);
+                await Task.Delay(1000, cancellationToken); // Wait for profile page to load
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                // Find the actual user_id from tv_bigo_id
+                var bigoIdNode = _accessibilityService.WaitForElementByResourceId(BigoLiveSConstants.BIGO_ID_ID, BigoLiveSConstants.SHORT_TIMEOUT);
+                if (bigoIdNode != null)
+                {
+                    var rawUserId = bigoIdNode.Text?.ToString() ?? "";
+                    // Extract only the ID value (remove "ID: " prefix if present)
+                    actualUserId = ExtractUserIdValue(rawUserId);
+                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found user_id: {actualUserId}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Could not find tv_bigo_id element");
+                }
+                
+                // Go back to the list
+                _accessibilityService.GoBack(1, stopAtHome: false);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Store all data
+                userData["user_id"] = actualUserId;
+                userData["username"] = username; // Store username separately
+                userData["amount"] = amount;
+                userData["rank_position"] = i + 1;
+                userData["user_level"] = userLevel;
+
+                // Extract profile picture URL using the actual user_id
+                if (!string.IsNullOrEmpty(actualUserId))
+                {
+                    userData["profile_picture_url"] = await ExtractProfilePictureUrlAsync(actualUserId, cancellationToken) ?? "";
+                }
+                else
+                {
+                    userData["profile_picture_url"] = "";
                 }
 
                 results.Add(userData);
@@ -268,72 +321,141 @@ namespace BigoLiveScrapper.Automations
         }
 
         /// <summary>
-        /// Extract profile picture URL from node structure
-        /// Looks for ImageView nodes in the parent hierarchy that might contain the URL
+        /// Extract profile picture URL from Bigo Live web page
+        /// Fetches HTML from https://www.bigo.tv/user/{user_id} and extracts first img src from div class="img-preview"
         /// </summary>
-        private string? ExtractProfilePictureUrl(string user_id)
+        private async Task<string?> ExtractProfilePictureUrlAsync(string user_id, CancellationToken cancellationToken)
         {
             try
             {
-                // Try to find image node in parent hierarchy
-                var parent = node.Parent;
-                int depth = 0;
-                while (parent != null && depth < 10)
-                {
-                    // Look for ImageView nodes in parent and its children
-                    var imageNodes = _accessibilityService.FindNodesByClassName("android.widget.ImageView", parent);
-                    foreach (var imgNode in imageNodes)
-                    {
-                        // Try to get content description that might contain URL
-                        var contentDesc = imgNode.ContentDescription?.ToString();
-                        if (!string.IsNullOrEmpty(contentDesc))
-                        {
-                            // Check if it contains http or bigo.tv
-                            if (contentDesc.Contains("http") || contentDesc.Contains("bigo.tv"))
-                            {
-                                var url = contentDesc.Split('?')[0].Trim(); // Remove query parameters if exists
-                                if (!string.IsNullOrEmpty(url))
-                                {
-                                    return url;
-                                }
-                            }
-                        }
+                if (string.IsNullOrEmpty(user_id))
+                    return null;
 
-                        // Also check if parent has WebView that might contain HTML
-                        // This is a fallback for web-based content
-                        var webViewParent = parent;
-                        int webViewDepth = 0;
-                        while (webViewParent != null && webViewDepth < 3)
-                        {
-                            if (webViewParent.ClassName?.Contains("WebView") == true)
-                            {
-                                // If WebView, try to extract from content description
-                                var webViewDesc = webViewParent.ContentDescription?.ToString();
-                                if (!string.IsNullOrEmpty(webViewDesc) && webViewDesc.Contains("bigo.tv"))
-                                {
-                                    // Extract URL pattern from content description
-                                    // This is a simplified extraction - may need adjustment
-                                    var urlMatch = System.Text.RegularExpressions.Regex.Match(webViewDesc, @"https?://[^\s\?]+");
-                                    if (urlMatch.Success)
-                                    {
-                                        return urlMatch.Value.Split('?')[0].Trim();
-                                    }
-                                }
-                            }
-                            webViewParent = webViewParent.Parent;
-                            webViewDepth++;
-                        }
-                    }
-                    parent = parent.Parent;
-                    depth++;
+                // Build URL
+                string profileUrl = $"https://www.bigo.tv/user/{Uri.EscapeDataString(user_id)}";
+                System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Fetching profile picture from: {profileUrl}");
+
+                // Create HttpClient
+                using var httpClient = new HttpClient();
+                httpClient.Timeout = TimeSpan.FromSeconds(10);
+                
+                // Fetch HTML
+                var response = await httpClient.GetAsync(profileUrl, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Failed to fetch profile page. Status: {response.StatusCode}");
+                    return null;
                 }
+
+                var htmlContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                
+                // Find div with class="img-preview"
+                // Pattern: <div class="img-preview"...>...<img src="..."...
+                var divPattern = @"<div[^>]*class\s*=\s*[""']img-preview[""'][^>]*>(.*?)</div>";
+                var divMatch = Regex.Match(htmlContent, divPattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                
+                if (divMatch.Success)
+                {
+                    var divContent = divMatch.Groups[1].Value;
+                    
+                    // Find first img tag src in the div
+                    var imgPattern = @"<img[^>]*src\s*=\s*[""']([^""']+)[""']";
+                    var imgMatch = Regex.Match(divContent, imgPattern, RegexOptions.IgnoreCase);
+                    
+                    if (imgMatch.Success)
+                    {
+                        var imgSrc = imgMatch.Groups[1].Value;
+                        
+                        // Split by ? and take [0] to remove query parameters
+                        var profilePictureUrl = imgSrc.Split('?')[0].Trim();
+                        
+                        System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found profile picture URL: {profilePictureUrl}");
+                        return profilePictureUrl;
+                    }
+                }
+                
+                System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Could not find img-preview div or img tag");
+                return null;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error extracting profile picture URL: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Error extracting profile picture URL: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Extract the actual user ID value from text that may contain "ID: " prefix
+        /// Example: "ID: RA_H2019" -> "RA_H2019"
+        /// </summary>
+        private string ExtractUserIdValue(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            // Remove "ID: " prefix if present (case-insensitive)
+            var trimmed = text.Trim();
+            if (trimmed.Contains(":"))
+            {
+                var array = trimmed.Split(':');
+                var result = array.Length > 1 ? array[1].TrimStart() : "";
+                return result;
             }
 
-            return null;
+            return trimmed;
+        }
+
+        /// <summary>
+        /// Decode unicode escape sequences (like \uD83C) to actual emojis
+        /// Handles both surrogate pairs and single unicode characters
+        /// </summary>
+        private string DecodeUnicodeEmojis(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            try
+            {
+                // First, handle surrogate pairs (high surrogate + low surrogate)
+                // Pattern: \uD800-\uDBFF (high) followed by \uDC00-\uDFFF (low)
+                // Must be done BEFORE single character conversion
+                var decoded = Regex.Replace(text, @"\\u([Dd][89AaBb][0-9AaBbFf][0-9AaBbCcDdEeFf])\\u([Dd][Cc][0-9AaBbCcDdEeFf][0-9AaBbCcDdEeFf])", match =>
+                {
+                    var highHex = match.Groups[1].Value;
+                    var lowHex = match.Groups[2].Value;
+                    
+                    if (int.TryParse(highHex, System.Globalization.NumberStyles.HexNumber, null, out int highSurrogate) &&
+                        int.TryParse(lowHex, System.Globalization.NumberStyles.HexNumber, null, out int lowSurrogate))
+                    {
+                        // Combine surrogate pair into single UTF-32 code point
+                        int codePoint = 0x10000 + ((highSurrogate & 0x3FF) << 10) + (lowSurrogate & 0x3FF);
+                        return char.ConvertFromUtf32(codePoint);
+                    }
+                    return match.Value;
+                });
+
+                // Then, handle single unicode characters (outside surrogate range)
+                decoded = Regex.Replace(decoded, @"\\u([0-9A-Fa-f]{4})", match =>
+                {
+                    var hexValue = match.Groups[1].Value;
+                    if (int.TryParse(hexValue, System.Globalization.NumberStyles.HexNumber, null, out int codePoint))
+                    {
+                        // Only convert if not a surrogate (surrogates should have been handled above)
+                        if (codePoint < 0xD800 || codePoint > 0xDFFF)
+                        {
+                            return char.ConvertFromUtf32(codePoint);
+                        }
+                    }
+                    return match.Value;
+                });
+
+                return decoded;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Error decoding unicode emojis: {ex.Message}");
+                return text; // Return original text if decoding fails
+            }
         }
     }
 }

@@ -87,7 +87,8 @@
                             HeightRequest="200"
                             FontSize="14"
                             IsReadOnly="True"
-                            FontFamily="Courier"/>
+                            FontFamily="Courier"
+                            AutoSize="Disabled"/>
                         <Button
                             Text="📋 Copy JSON"
                             Clicked="OnCopyJsonClicked"
