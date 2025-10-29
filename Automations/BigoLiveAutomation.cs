@@ -185,7 +185,9 @@ namespace BigoLiveScrapper.Automations
                     { "Overall", tabDataDict.ContainsKey("Overall") ? tabDataDict["Overall"].Count : 0 }
                 };
 
-                // Build final JSON structure with summary and data
+
+                // Build final JSON structure with summary, data, and searched username
+                scrapedData["searched_username"] = userId;
                 scrapedData["summary"] = summaryDict;
                 scrapedData["data"] = tabDataDict;
 
