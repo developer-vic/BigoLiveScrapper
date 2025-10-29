@@ -86,14 +86,25 @@ namespace BigoLiveScrapper.Automations
                 await Task.Delay(2000, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Step 4: Click first search result (sg.bigo.live:id/searchOptimizeHotId)
+                // Step 4: Click second tab (Host) - sg.bigo.live:id/uiTabTitle index 1
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for search result");
-                var searchResult = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.SEARCH_RESULT_ID);
+                var searchResult = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.SEARCH_HOST_TABS_ID, 1);
                 if (searchResult == null)
                 {
-                    return (false, "Could not find search result", "");
+                    return (false, "Could not find Host tab", "");
                 }
                 _accessibilityService.ClickNode(searchResult);
+                await Task.Delay(5000, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                //Find first profile picture and click it SEARCH_HOST_PICS_ID
+                System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for host profile picture");
+                var profilePic = _accessibilityService.FindNodeByResourceId(null, BigoLiveSConstants.SEARCH_HOST_PICS_ID, 0);
+                if (profilePic == null)
+                {
+                    return (false, "Could not find host profile picture", "");
+                }
+                _accessibilityService.ClickNode(profilePic);
                 await Task.Delay(2000, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 

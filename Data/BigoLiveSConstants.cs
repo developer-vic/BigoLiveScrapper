@@ -12,7 +12,8 @@ namespace BigoLiveScrapper.Data
         public static readonly string SEARCH_BUTTON_ID = "sg.bigo.live:id/iv_search";
         public static readonly string SEARCH_INPUT_ID = "sg.bigo.live:id/searchInput";
         public static readonly string SEARCH_CONFIRM_ID = "sg.bigo.live:id/searchOrCancel";
-        public static readonly string SEARCH_RESULT_ID = "sg.bigo.live:id/searchOptimizeHotId";
+        public static readonly string SEARCH_HOST_TABS_ID = "sg.bigo.live:id/uiTabTitle";
+        public static readonly string SEARCH_HOST_PICS_ID = "sg.bigo.live:id/avatar_container";
         public static readonly string CONTRIB_ENTRY_ID = "sg.bigo.live:id/fl_contrib_entry";
         public static readonly string CONTRIB_TEXT_ID = "sg.bigo.live:id/tv_contribute";
         public static readonly string TAB_TITLE_ID = "sg.bigo.live:id/uiTabTitle";

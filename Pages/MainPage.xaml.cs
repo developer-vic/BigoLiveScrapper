@@ -26,7 +26,7 @@ public partial class MainPage : ContentPage
 
 		if (VConstants.IS_TEST_MODE)
 		{
-			UserIdEntry.Text = "euucamilaa";
+			UserIdEntry.Text = "euucamilaa";//BA.Dudamaria
 		}
 	}
 
