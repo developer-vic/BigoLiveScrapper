@@ -94,7 +94,7 @@ namespace BigoLiveScrapper.Automations
                     return (false, "Could not find search result", "");
                 }
                 _accessibilityService.ClickNode(searchResult);
-                await Task.Delay(1000, cancellationToken);
+                await Task.Delay(2000, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Step 5: Click contribution entry (sg.bigo.live:id/fl_contrib_entry -> sg.bigo.live:id/tv_contribute)
