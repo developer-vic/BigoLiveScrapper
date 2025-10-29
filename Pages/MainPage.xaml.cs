@@ -1,4 +1,6 @@
-﻿using BigoLiveScrapper.Interfaces;
+﻿using AndroidX.ConstraintLayout.Core.Dsl;
+using BigoLiveScrapper.Data;
+using BigoLiveScrapper.Interfaces;
 using BigoLiveScrapper.Pages;
 using BigoLiveScrapper.Platforms.Android;
 using BigoLiveScrapper.Services;
@@ -6,7 +8,7 @@ using BigoLiveScrapper.Services;
 namespace BigoLiveScrapper;
 
 public partial class MainPage : ContentPage
-{ 
+{
 	private readonly IAutomationService _accessibilityService;
 	private bool _isScrapingRunning = false;
 	private AutomationService? _automationService;
@@ -21,6 +23,11 @@ public partial class MainPage : ContentPage
 
 		// Initialize automation service
 		InitializeAutomationService();
+
+		if (VConstants.IS_TEST_MODE)
+		{
+			UserIdEntry.Text = "euucamilaa";
+		}
 	}
 
 	private void InitializeAutomationService()
@@ -234,59 +241,59 @@ public partial class MainPage : ContentPage
 				_ = Task.Run(async () =>
 				{
 					try
-						{
-							var result = await _automationService.RunScrapingAsync(userId, cancellationToken);
+					{
+						var result = await _automationService.RunScrapingAsync(userId, cancellationToken);
 
-							// Check if cancelled
-							if (cancellationToken.IsCancellationRequested)
-							{
-								System.Diagnostics.Debug.WriteLine("Scraping was cancelled");
-
-								MainThread.BeginInvokeOnMainThread(async () =>
-								{
-									await RestoreUIAfterScraping(false);
-									await DisplayAlert("Scraping Stopped", "The scraping process was stopped by user.", "OK");
-								});
-							}
-							else
-							{
-								// Scraping completed successfully
-								MainThread.BeginInvokeOnMainThread(async () =>
-								{
-									await RestoreUIAfterScraping(true);
-									
-									if (result.success)
-									{
-										JsonResponseLabel.Text = result.jsonData;
-										await DisplayAlert("Success", "Scraping completed successfully!", "OK");
-									}
-									else
-									{
-										await DisplayAlert("Error", $"Scraping failed: {result.message}", "OK");
-									}
-								});
-							}
-						}
-						catch (OperationCanceledException)
+						// Check if cancelled
+						if (cancellationToken.IsCancellationRequested)
 						{
-							System.Diagnostics.Debug.WriteLine("Scraping was cancelled via exception");
+							System.Diagnostics.Debug.WriteLine("Scraping was cancelled");
 
 							MainThread.BeginInvokeOnMainThread(async () =>
 							{
 								await RestoreUIAfterScraping(false);
-								await DisplayAlert("Scraping Stopped", "The scraping process was stopped.", "OK");
+								await DisplayAlert("Scraping Stopped", "The scraping process was stopped by user.", "OK");
 							});
 						}
-						catch (Exception ex)
+						else
 						{
-							System.Diagnostics.Debug.WriteLine($"Error in scraping: {ex.Message}");
-
+							// Scraping completed successfully
 							MainThread.BeginInvokeOnMainThread(async () =>
 							{
-								await RestoreUIAfterScraping(false);
-								await DisplayAlert("Error", $"Failed to run scraping: {ex.Message}", "OK");
+								await RestoreUIAfterScraping(true);
+
+								if (result.success)
+								{
+									JsonResponseLabel.Text = result.jsonData;
+									await DisplayAlert("Success", "Scraping completed successfully!", "OK");
+								}
+								else
+								{
+									await DisplayAlert("Error", $"Scraping failed: {result.message}", "OK");
+								}
 							});
 						}
+					}
+					catch (OperationCanceledException)
+					{
+						System.Diagnostics.Debug.WriteLine("Scraping was cancelled via exception");
+
+						MainThread.BeginInvokeOnMainThread(async () =>
+						{
+							await RestoreUIAfterScraping(false);
+							await DisplayAlert("Scraping Stopped", "The scraping process was stopped.", "OK");
+						});
+					}
+					catch (Exception ex)
+					{
+						System.Diagnostics.Debug.WriteLine($"Error in scraping: {ex.Message}");
+
+						MainThread.BeginInvokeOnMainThread(async () =>
+						{
+							await RestoreUIAfterScraping(false);
+							await DisplayAlert("Error", $"Failed to run scraping: {ex.Message}", "OK");
+						});
+					}
 				}, cancellationToken);
 			}
 		}

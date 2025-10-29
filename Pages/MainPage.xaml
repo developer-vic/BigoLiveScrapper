@@ -35,13 +35,13 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- User ID Input Text="euucamilaa"-->
+            <!-- User ID Input Text="euucamilaa" -->
             <VerticalStackLayout Spacing="10">
                 <Label Text="Enter User ID to Scrape:"
                        FontAttributes="Bold"
                        FontSize="16"
                        TextColor="{StaticResource Primary}"/>
-                <Entry x:Name="UserIdEntry"
+                <Entry x:Name="UserIdEntry" 
                        Placeholder="Enter Bigo Live user ID"
                        FontSize="16"
                        HeightRequest="50"/>
@@ -92,7 +92,7 @@
                                 TextColor="{StaticResource Black}"/>
                         </ScrollView>
                         <Grid ColumnDefinitions="*,*"
-                                ColumnSpacing="10">
+                              ColumnSpacing="10">
                             <Button
                                 Grid.Column="0"
                                 Text="📋 Copy"

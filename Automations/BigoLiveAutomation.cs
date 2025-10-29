@@ -406,40 +406,10 @@ namespace BigoLiveScrapper.Automations
 
             try
             {
-                // First, handle surrogate pairs (high surrogate + low surrogate)
-                // Pattern: \uD800-\uDBFF (high) followed by \uDC00-\uDFFF (low)
-                // Must be done BEFORE single character conversion
-                var decoded = Regex.Replace(text, @"\\u([Dd][89AaBb][0-9AaBbFf][0-9AaBbCcDdEeFf])\\u([Dd][Cc][0-9AaBbCcDdEeFf][0-9AaBbCcDdEeFf])", match =>
-                {
-                    var highHex = match.Groups[1].Value;
-                    var lowHex = match.Groups[2].Value;
-
-                    if (int.TryParse(highHex, System.Globalization.NumberStyles.HexNumber, null, out int highSurrogate) &&
-                        int.TryParse(lowHex, System.Globalization.NumberStyles.HexNumber, null, out int lowSurrogate))
-                    {
-                        // Combine surrogate pair into single UTF-32 code point
-                        int codePoint = 0x10000 + ((highSurrogate & 0x3FF) << 10) + (lowSurrogate & 0x3FF);
-                        return char.ConvertFromUtf32(codePoint);
-                    }
-                    return match.Value;
-                });
-
-                // Then, handle single unicode characters (outside surrogate range)
-                decoded = Regex.Replace(decoded, @"\\u([0-9A-Fa-f]{4})", match =>
-                {
-                    var hexValue = match.Groups[1].Value;
-                    if (int.TryParse(hexValue, System.Globalization.NumberStyles.HexNumber, null, out int codePoint))
-                    {
-                        // Only convert if not a surrogate (surrogates should have been handled above)
-                        if (codePoint < 0xD800 || codePoint > 0xDFFF)
-                        {
-                            return char.ConvertFromUtf32(codePoint);
-                        }
-                    }
-                    return match.Value;
-                });
-
-                return decoded;
+                // Use JSON deserialization to decode all unicode escapes, including surrogate pairs and mixed sequences
+                // Wrap the string in quotes to make it a valid JSON string
+                string jsonWrapped = $"\"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
+                return JsonSerializer.Deserialize<string>(jsonWrapped) ?? text;
             }
             catch (Exception ex)
             {
