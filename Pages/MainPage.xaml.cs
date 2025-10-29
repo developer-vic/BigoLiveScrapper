@@ -1,4 +1,5 @@
 ﻿using BigoLiveScrapper.Interfaces;
+using BigoLiveScrapper.Pages;
 using BigoLiveScrapper.Platforms.Android;
 using BigoLiveScrapper.Services;
 
@@ -149,11 +150,25 @@ public partial class MainPage : ContentPage
 
 	private async void OnCopyJsonClicked(object? sender, EventArgs e)
 	{
-		var jsonText = JsonResponseEditor.Text;
+		var jsonText = JsonResponseLabel.Text;
 		if (!string.IsNullOrEmpty(jsonText))
 		{
 			await Clipboard.Default.SetTextAsync(jsonText);
 			await DisplayAlert("Copied", "JSON data copied to clipboard!", "OK");
+		}
+	}
+
+	private async void OnViewFullScreenClicked(object? sender, EventArgs e)
+	{
+		var jsonText = JsonResponseLabel.Text;
+		if (!string.IsNullOrEmpty(jsonText))
+		{
+			var jsonViewerPage = new JsonViewerPage(jsonText);
+			await Navigation.PushModalAsync(jsonViewerPage);
+		}
+		else
+		{
+			await DisplayAlert("No Data", "No JSON data to display. Please run scraping first.", "OK");
 		}
 	}
 
@@ -205,7 +220,7 @@ public partial class MainPage : ContentPage
 				StartScrapingBtn.IsEnabled = true;
 
 				// Clear previous JSON result
-				JsonResponseEditor.Text = "";
+				JsonResponseLabel.Text = "";
 
 				// Show loading indicator
 				LoadingIndicator.IsVisible = true;
@@ -242,7 +257,7 @@ public partial class MainPage : ContentPage
 									
 									if (result.success)
 									{
-										JsonResponseEditor.Text = result.jsonData;
+										JsonResponseLabel.Text = result.jsonData;
 										await DisplayAlert("Success", "Scraping completed successfully!", "OK");
 									}
 									else

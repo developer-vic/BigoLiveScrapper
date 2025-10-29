@@ -119,7 +119,10 @@ namespace BigoLiveScrapper.Automations
 
                 // Step 6: Find all 4 tabs (sg.bigo.live:id/uiTabTitle) - Daily, Weekly, Monthly, Overall
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: Looking for tabs");
-                var scrapedData = new Dictionary<string, List<Dictionary<string, object>>>();
+                var scrapedData = new Dictionary<string, object>();
+
+                var tabDataDict = new Dictionary<string, List<Dictionary<string, object>>>();
+                var summaryDict = new Dictionary<string, object>();
 
                 // Define tab order and max items
                 var tabConfigs = new[]
@@ -127,8 +130,11 @@ namespace BigoLiveScrapper.Automations
                     new { Name = "Daily", MaxItems = 3 },
                     new { Name = "Weekly", MaxItems = 3 },
                     new { Name = "Monthly", MaxItems = 3 },
-                    new { Name = "Overall", MaxItems = 10 }
+                    new { Name = "Overall", MaxItems = VConstants.IS_TEST_MODE ? 3 : 10 }
                 };
+
+                int totalUsersScraped = 0;
+                int totalTabsScraped = 0;
 
                 for (int tabIndex = 0; tabIndex < Math.Min(tabConfigs.Length, 4); tabIndex++)
                 {
@@ -148,10 +154,29 @@ namespace BigoLiveScrapper.Automations
 
                     // Scrape data for this tab (pass fresh rootNode context)
                     var tabData = await ScrapeTabData(tabConfig.MaxItems, cancellationToken);
-                    scrapedData[tabConfig.Name] = tabData;
+                    tabDataDict[tabConfig.Name] = tabData;
+                    
+                    totalUsersScraped += tabData.Count;
+                    if (tabData.Count > 0)
+                        totalTabsScraped++;
 
                     await Task.Delay(1000, cancellationToken);
                 }
+
+                // Build summary
+                summaryDict["total_users_scraped"] = totalUsersScraped;
+                summaryDict["total_tabs_scraped"] = totalTabsScraped;
+                summaryDict["tabs"] = new Dictionary<string, int>
+                {
+                    { "Daily", tabDataDict.ContainsKey("Daily") ? tabDataDict["Daily"].Count : 0 },
+                    { "Weekly", tabDataDict.ContainsKey("Weekly") ? tabDataDict["Weekly"].Count : 0 },
+                    { "Monthly", tabDataDict.ContainsKey("Monthly") ? tabDataDict["Monthly"].Count : 0 },
+                    { "Overall", tabDataDict.ContainsKey("Overall") ? tabDataDict["Overall"].Count : 0 }
+                };
+
+                // Build final JSON structure with summary and data
+                scrapedData["summary"] = summaryDict;
+                scrapedData["data"] = tabDataDict;
 
                 // Convert to JSON
                 var jsonOptions = new JsonSerializerOptions
@@ -191,17 +216,25 @@ namespace BigoLiveScrapper.Automations
             await Task.Delay(1500, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            var userNameNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.USER_NAME_ID);
-            var contributionNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.CONTRIBUTION_AMOUNT_ID);
-            var levelNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.USER_LEVEL_ID);
+            // Get all nodes and filter to only visible ones (workaround for tab switching issue)
+            var allUserNameNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.USER_NAME_ID);
+            // Filter to only visible nodes (current tab content)
+            var userNameNodes = _accessibilityService.FilterVisibleNodes(allUserNameNodes);
             if (userNameNodes == null || userNameNodes.Count == 0)
             {
                 System.Diagnostics.Debug.WriteLine("BigoLiveAutomation: No user names found in tab");
                 return results;
             }
+            
+            // Get all nodes and filter to only visible ones (workaround for tab switching issue)
+            var allContributionNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.CONTRIBUTION_AMOUNT_ID);
+            var allLevelNodes = _accessibilityService.FindNodesByResourceId(BigoLiveSConstants.USER_LEVEL_ID);
+            // Filter to only visible nodes (current tab content)
+            var contributionNodes = _accessibilityService.FilterVisibleNodes(allContributionNodes);
+            var levelNodes = _accessibilityService.FilterVisibleNodes(allLevelNodes);
 
             int itemCount = Math.Min(maxItems, userNameNodes.Count);
-            System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found {userNameNodes.Count} users, scraping {itemCount} items");
+            System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Found {userNameNodes.Count} visible users (from {allUserNameNodes?.Count ?? 0} total), scraping {itemCount} items");
 
             for (int i = 0; i < itemCount; i++)
             {

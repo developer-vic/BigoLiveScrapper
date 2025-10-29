@@ -1399,6 +1399,98 @@ namespace BigoLiveScrapper.Platforms.Android
                 System.Diagnostics.Debug.WriteLine($"AutomationAccessibilityService: Error in FindClickableNodes: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Filter nodes to only include visible ones (workaround for tab switching issue)
+        /// When tabs are switched, RootInActiveWindow may contain nodes from all tabs.
+        /// This filters to only get nodes that are actually visible on screen.
+        /// </summary>
+        public List<AccessibilityNodeInfo> FilterVisibleNodes(List<AccessibilityNodeInfo>? nodes)
+        {
+            if (nodes == null || nodes.Count == 0)
+                return new List<AccessibilityNodeInfo>();
+
+            var visibleNodes = new List<AccessibilityNodeInfo>();
+
+            try
+            {
+                // Get screen bounds to filter nodes that are actually on screen
+                var rootNode = RootInActiveWindow;
+                if (rootNode == null)
+                    return nodes; // Fallback: return all if we can't check visibility
+
+                var screenBounds = new global::Android.Graphics.Rect();
+                rootNode.GetBoundsInScreen(screenBounds);
+
+                foreach (var node in nodes)
+                {
+                    try
+                    {
+                        // Check if node is visible to user
+                        if (!node.VisibleToUser)
+                            continue;
+
+                        // Check if node bounds are within screen bounds
+                        var nodeBounds = new global::Android.Graphics.Rect();
+                        node.GetBoundsInScreen(nodeBounds);
+
+                        // Check if node is actually visible on screen (has valid bounds and intersects with screen)
+                        int nodeWidth = nodeBounds.Right - nodeBounds.Left;
+                        int nodeHeight = nodeBounds.Bottom - nodeBounds.Top;
+
+                        if (nodeWidth > 0 && nodeHeight > 0)
+                        {
+                            // Check if node is within reasonable screen bounds (with some tolerance)
+                            // Sometimes nodes from hidden tabs might have bounds but be off-screen
+                            if (nodeBounds.Top >= screenBounds.Top - 100 &&
+                                nodeBounds.Bottom <= screenBounds.Bottom + 100 &&
+                                nodeBounds.Left >= screenBounds.Left - 100 &&
+                                nodeBounds.Right <= screenBounds.Right + 100)
+                            {
+                                visibleNodes.Add(node);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // If we can't check bounds, skip this node
+                        System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Error checking node visibility: {ex.Message}");
+                        continue;
+                    }
+                }
+
+                if (visibleNodes.Count > 0)
+                {
+                    // Sort visible nodes by Y position (top to bottom) to ensure consistent order
+                    // This helps when multiple tabs have overlapping content
+                    visibleNodes.Sort((a, b) =>
+                    {
+                        try
+                        {
+                            var boundsA = new global::Android.Graphics.Rect();
+                            var boundsB = new global::Android.Graphics.Rect();
+                            a.GetBoundsInScreen(boundsA);
+                            b.GetBoundsInScreen(boundsB);
+
+                            // Sort by top position first, then by left position
+                            int yCompare = boundsA.Top.CompareTo(boundsB.Top);
+                            if (yCompare != 0) return yCompare;
+                            return boundsA.Left.CompareTo(boundsB.Left);
+                        }
+                        catch
+                        {
+                            return 0;
+                        }
+                    });
+                }
+                return visibleNodes;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"BigoLiveAutomation: Error filtering visible nodes: {ex.Message}");
+                return nodes ?? new List<AccessibilityNodeInfo>();
+            }
+        }
     }
 
     public class AutomationAction

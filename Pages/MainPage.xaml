@@ -81,19 +81,32 @@
                     Padding="15"
                     BackgroundColor="White">
                     <VerticalStackLayout Spacing="10">
-                        <Editor
-                            x:Name="JsonResponseEditor"
-                            Text=""
+                        <ScrollView
                             HeightRequest="200"
-                            FontSize="14"
-                            IsReadOnly="True"
-                            FontFamily="Courier"
-                            AutoSize="Disabled"/>
-                        <Button
-                            Text="📋 Copy JSON"
-                            Clicked="OnCopyJsonClicked"
-                            BackgroundColor="{StaticResource Primary}"
-                            Margin="0,10,0,0"/>
+                            VerticalScrollBarVisibility="Always"
+                            HorizontalScrollBarVisibility="Never">
+                            <Label
+                                x:Name="JsonResponseLabel"
+                                Text=""
+                                FontSize="14"
+                                FontFamily="Courier"
+                                TextColor="{StaticResource Black}"/>
+                        </ScrollView>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <Button
+                                Grid.Column="0"
+                                Text="📋 Copy"
+                                Clicked="OnCopyJsonClicked"
+                                BackgroundColor="{StaticResource Primary}"
+                                Margin="0,10,0,0"/>
+                            <Button
+                                Grid.Column="1"
+                                Text="🔍 Full Screen"
+                                Clicked="OnViewFullScreenClicked"
+                                BackgroundColor="{StaticResource Secondary}"
+                                TextColor="{StaticResource Primary}"
+                                Margin="0,10,0,0"/>
+                        </Grid>
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>
